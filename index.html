@@ -186,7 +186,7 @@
 
     <script>
         const AI_MODELS = {
-            "Claude 3.7 Sonnet": 3.0,
+            "Claude 3.7 Sonnet": 2.0,
             "OpenAI o3-mini": 4.0,
             "GPT-4.5": 6.0,
             "DeepSeek R1": 8.0,
@@ -197,6 +197,10 @@
             "Claude 2.1": 18.0,
             "GPT-3.5 Turbo": 20.0
         };
+
+        // Pre-baked sets of 10 images per model (fetched at start)
+        const imageCache = {};
+        let imageCacheReady = false;
 
         const QWERTY_COORDS = {
             'q': [0, 0], 'w':[0, 1], 'e':[0, 2], 'r': [0, 3], 't':[0, 4], 'y':[0, 5], 'u': [0, 6], 'i':[0, 7], 'o': [0, 8], 'p':[0, 9],
@@ -209,6 +213,7 @@
         let timeLeft = 60;
         let timerInterval;
         let currentMultiplier = 10.0;
+        let currentModelName = "Gemini 1.5 Pro";
 
         let realX = window.innerWidth / 2;
         let realY = window.innerHeight / 2;
@@ -225,7 +230,7 @@
         const resultText = document.getElementById('result-text');
         const fakeCursor = document.getElementById('fake-cursor');
 
-        for (const[name, multiplier] of Object.entries(AI_MODELS)) {
+        for (const [name, multiplier] of Object.entries(AI_MODELS)) {
             const option = document.createElement('option');
             option.value = multiplier;
             option.textContent = name;
@@ -235,7 +240,31 @@
 
         modelSelect.addEventListener('change', (e) => {
             currentMultiplier = parseFloat(e.target.value);
+            currentModelName = modelSelect.options[modelSelect.selectedIndex].text;
         });
+
+        // Fetch 10 Flickr images for a given tag and cache them per model
+        async function prefetchImagesForModel(modelName) {
+            if (imageCache[modelName]) return;
+            // Use a generic tag relevant to "tech chaos" so we always get something
+            const tags = "computer,code,technology,keyboard,screen";
+            const url = `https://api.flickr.com/services/feeds/photos_public.gne?tags=${encodeURIComponent(tags)}&format=json&nojsoncallback=1`;
+            try {
+                const r = await fetch(url);
+                const data = await r.json();
+                imageCache[modelName] = data.items.slice(0, 10).map(item => item.media.m.replace('_m.', '_b.'));
+            } catch(e) {
+                imageCache[modelName] = [];
+            }
+        }
+
+        // Prefetch for all models on load
+        (async () => {
+            for (const name of Object.keys(AI_MODELS)) {
+                await prefetchImagesForModel(name);
+            }
+            imageCacheReady = true;
+        })();
 
         function getAmount() {
             return (Math.sin(Date.now() / 1000 * 2) + 1) / 2 * 0.9 + 0.1;
@@ -248,10 +277,10 @@
                 return chars[Math.floor(Math.random() * chars.length)];
             }
 
-            const[r1, c1] = QWERTY_COORDS[lowerChar];
-            let distances =[];
+            const [r1, c1] = QWERTY_COORDS[lowerChar];
+            let distances = [];
 
-            for (const [key,[r2, c2]] of Object.entries(QWERTY_COORDS)) {
+            for (const [key, [r2, c2]] of Object.entries(QWERTY_COORDS)) {
                 if (key === lowerChar) continue;
                 const dist = Math.hypot(r1 - r2, c1 - c2);
                 distances.push({ key, dist });
@@ -281,7 +310,7 @@
             testField.disabled = false;
 
             isRunning = true;
-            timeLeft = 60; // Set back to 60 for full release!
+            timeLeft = 60;
 
             generatingText.textContent = 'generating in';
             generatingText.style.display = 'inline';
@@ -308,41 +337,40 @@
             jitterY = 0;
 
             if (finishedGeneration) {
-                // Prepare the UI for loading
                 isFetchingImage = true;
                 startBtn.style.display = 'none';
                 generatingText.textContent = 'rendering gibberish...';
                 testField.disabled = true;
 
-                // Grab what they actually managed to type
                 let finalPrompt = testField.value.trim();
                 if (!finalPrompt) finalPrompt = "Empty void of failure";
 
-                // Show their exact typo string below
                 resultText.textContent = `"${finalPrompt}"`;
 
-                // Fire the API-less image generator
-                // We add a random seed at the end so it doesn't cache previous results
-                const seed = Math.floor(Math.random() * 100000);
-                const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=500&height=300&nologo=true&seed=${seed}`;
+                // Pick the image corresponding to the selected model index
+                const modelNames = Object.keys(AI_MODELS);
+                const modelIndex = modelNames.indexOf(currentModelName);
+                const cached = imageCache[currentModelName];
 
-                resultImage.src = imageUrl;
+                let imgUrl = null;
+                if (cached && cached.length > 0) {
+                    // Each model gets a deterministic slot, so same model = same image (until page reload)
+                    imgUrl = cached[modelIndex % cached.length];
+                }
 
-                // Wait for the image to actually finish loading from the server
-                resultImage.onload = () => {
+                function showImage(src) {
                     isFetchingImage = false;
                     testField.style.display = 'none';
                     generatingText.style.display = 'none';
                     startBtn.textContent = 'start';
                     startBtn.style.display = 'inline-block';
                     startBtn.style.color = "#111";
-
+                    resultImage.src = src;
                     resultImage.style.display = 'block';
                     resultText.style.display = 'block';
-                };
+                }
 
-                // Fallback just in case the image fails to load
-                resultImage.onerror = () => {
+                function showError() {
                     isFetchingImage = false;
                     generatingText.textContent = 'generation failed.';
                     setTimeout(() => {
@@ -351,7 +379,17 @@
                         startBtn.style.display = 'inline-block';
                         startBtn.style.color = "#111";
                     }, 2000);
-                };
+                }
+
+                if (imgUrl) {
+                    // Try to load; if Flickr CDN fails, fall back to live search
+                    const testImg = new Image();
+                    testImg.onload = () => showImage(imgUrl);
+                    testImg.onerror = () => fetchLiveFlickr(finalPrompt, showImage, showError);
+                    testImg.src = imgUrl;
+                } else {
+                    fetchLiveFlickr(finalPrompt, showImage, showError);
+                }
 
             } else {
                 generatingText.style.display = 'none';
@@ -359,6 +397,21 @@
                 startBtn.style.display = 'inline-block';
                 startBtn.style.color = "#111";
             }
+        }
+
+        function fetchLiveFlickr(prompt, onSuccess, onError) {
+            const url = `https://api.flickr.com/services/feeds/photos_public.gne?tags=${encodeURIComponent(prompt)}&format=json&nojsoncallback=1`;
+            fetch(url)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.items && data.items.length > 0) {
+                        const imgUrl = data.items[0].media.m.replace('_m.', '_b.');
+                        onSuccess(imgUrl);
+                    } else {
+                        onError();
+                    }
+                })
+                .catch(onError);
         }
 
         testField.addEventListener('input', (e) => {
