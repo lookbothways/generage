@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ragecoding Web Simulator</title>
+    <title>Image Generagetion Toolkit</title>
+    <!-- Importing a clean, thin font with weights 100 (Ultra Thin), 300 (Light), and 400 (Regular) -->
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@100;300;400&display=swap" rel="stylesheet">
     <style>
         body {
@@ -20,6 +21,7 @@
             transition: background-color 0.3s ease;
         }
 
+        /* The evil state: Hides the real cursor entirely */
         body.rage-active, body.rage-active * {
             cursor: none !important;
         }
@@ -121,6 +123,7 @@
             border-color: #bbb;
         }
 
+        /* --- NEW GENERATION RESULTS STYLING --- */
         #result-image {
             display: none;
             width: 100%;
@@ -132,16 +135,17 @@
         #result-text {
             display: none;
             font-family: 'Roboto', sans-serif;
-            font-weight: 100;
+            font-weight: 100; /* The ultra-thin font requested! */
             font-size: 1.2rem;
             color: #444;
             text-align: center;
             width: 100%;
             word-wrap: break-word;
-            margin-top: -20px;
+            margin-top: -20px; /* Pulls it slightly closer to the image */
             font-style: italic;
         }
 
+        /* The fake cursor that will lie to the user */
         #fake-cursor {
             display: none;
             position: fixed;
@@ -178,34 +182,37 @@
             </div>
         </div>
 
-        <textarea id="test-field" placeholder="Describe the image you want to generate..."></textarea>
+        <!-- The active generation area -->
+        <textarea id="test-field" placeholder="Press START and then describe the image you want to generate..."></textarea>
 
-        <img id="result-image" src="" alt="Generated Image">
+        <!-- The post-generation reveal area -->
+        <img id="result-image" src="image.jpg" alt="Generated Image">
         <div id="result-text"></div>
     </div>
 
     <script>
+// --- CONFIGURATION ---
         const AI_MODELS = {
-            "Claude 3.7 Sonnet": 3.0,
-            "OpenAI o3-mini": 4.0,
-            "GPT-4.5": 6.0,
-            "DeepSeek R1": 8.0,
-            "Gemini 1.5 Pro": 10.0,
-            "Llama 3.3 70B": 12.0,
-            "Grok 3": 14.0,
-            "Mistral Large": 16.0,
-            "Claude 2.1": 18.0,
-            "GPT-3.5 Turbo": 20.0
+            "Google Nano Banana 2": 2.0,
+            "Google Imagen 4 Ultra": 4.0,
+            "Seedream 4.0": 6.0,
+            "Z-Image": 8.0,
+            "SDXL": 10.0,
+            "Grok": 12.0,
+            "SD1.0": 14.0,
+            "Mystic 2.5": 16.0,
+            "Flux.2 Flex": 18.0,
+            "Mystic 2.5 Fluid": 20.0
         };
 
         const QWERTY_COORDS = {
-            'q': [0, 0], 'w':[0, 1], 'e':[0, 2], 'r': [0, 3], 't':[0, 4], 'y':[0, 5], 'u': [0, 6], 'i':[0, 7], 'o': [0, 8], 'p':[0, 9],
+            'q': [0, 0], 'w':[0, 1], 'e':[0, 2], 'r': [0, 3], 't':[0, 4], 'y':[0, 5], 'u': [0, 6], 'i': [0, 7], 'o': [0, 8], 'p':[0, 9],
             'a':[1, 0.25], 's':[1, 1.25], 'd':[1, 2.25], 'f':[1, 3.25], 'g':[1, 4.25], 'h':[1, 5.25], 'j':[1, 6.25], 'k':[1, 7.25], 'l':[1, 8.25],
             'z':[2, 0.75], 'x':[2, 1.75], 'c':[2, 2.75], 'v':[2, 3.75], 'b':[2, 4.75], 'n':[2, 5.75], 'm':[2, 6.75]
         };
 
+        // --- STATE VARIABLES ---
         let isRunning = false;
-        let isFetchingImage = false;
         let timeLeft = 60;
         let timerInterval;
         let currentMultiplier = 10.0;
@@ -217,6 +224,7 @@
         let jitterX = 0;
         let jitterY = 0;
 
+        // --- DOM ELEMENTS ---
         const startBtn = document.getElementById('start-btn');
         const generatingText = document.getElementById('generating-text');
         const modelSelect = document.getElementById('model-select');
@@ -225,6 +233,7 @@
         const resultText = document.getElementById('result-text');
         const fakeCursor = document.getElementById('fake-cursor');
 
+        // Populate Dropdown
         for (const[name, multiplier] of Object.entries(AI_MODELS)) {
             const option = document.createElement('option');
             option.value = multiplier;
@@ -237,6 +246,7 @@
             currentMultiplier = parseFloat(e.target.value);
         });
 
+        // --- MATH UTILS ---
         function getAmount() {
             return (Math.sin(Date.now() / 1000 * 2) + 1) / 2 * 0.9 + 0.1;
         }
@@ -268,24 +278,24 @@
             return originalChar === originalChar.toUpperCase() ? wrongChar.toUpperCase() : wrongChar;
         }
 
+        // --- START / STOP LOGIC ---
         startBtn.addEventListener('click', () => {
-            if (isRunning || isFetchingImage) {
+            if (isRunning) {
+                // User aborted the generation manually
                 stopRage(false);
                 return;
             }
 
+            // Reset the UI for a new run
             resultImage.style.display = 'none';
             resultText.style.display = 'none';
             testField.style.display = 'block';
             testField.value = '';
-            testField.disabled = false;
 
             isRunning = true;
-            timeLeft = 60; // Set back to 60 for full release!
+            timeLeft = 60;
 
-            generatingText.textContent = 'generating in';
             generatingText.style.display = 'inline';
-            startBtn.style.display = 'inline-block';
             startBtn.textContent = timeLeft;
             startBtn.style.color = "#ff0000";
             document.body.classList.add('rage-active');
@@ -295,6 +305,7 @@
                 timeLeft--;
                 startBtn.textContent = timeLeft;
                 if (timeLeft <= 0) {
+                    // Timer finished successfully, reveal the image!
                     stopRage(true);
                 }
             }, 1000);
@@ -303,64 +314,29 @@
         function stopRage(finishedGeneration = false) {
             isRunning = false;
             clearInterval(timerInterval);
+
+            generatingText.style.display = 'none';
+            startBtn.textContent = 'start';
+            startBtn.style.color = "#111";
             document.body.classList.remove('rage-active');
+
+            // Snap cursor back to normal
             jitterX = 0;
             jitterY = 0;
 
+            // If the timer hit 0, swap the text field for the image and text
             if (finishedGeneration) {
-                // Prepare the UI for loading
-                isFetchingImage = true;
-                startBtn.style.display = 'none';
-                generatingText.textContent = 'rendering gibberish...';
-                testField.disabled = true;
+                testField.style.display = 'none';
+                resultImage.style.display = 'block';
 
-                // Grab what they actually managed to type
-                let finalPrompt = testField.value.trim();
-                if (!finalPrompt) finalPrompt = "Empty void of failure";
-
-                // Show their exact typo string below
+                // Show what they actually typed
+                const finalPrompt = testField.value.trim() || " ";
                 resultText.textContent = `"${finalPrompt}"`;
-
-                // Fire the API-less image generator
-                // We add a random seed at the end so it doesn't cache previous results
-                const seed = Math.floor(Math.random() * 100000);
-                const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=500&height=300&nologo=true&seed=${seed}`;
-
-                resultImage.src = imageUrl;
-
-                // Wait for the image to actually finish loading from the server
-                resultImage.onload = () => {
-                    isFetchingImage = false;
-                    testField.style.display = 'none';
-                    generatingText.style.display = 'none';
-                    startBtn.textContent = 'start';
-                    startBtn.style.display = 'inline-block';
-                    startBtn.style.color = "#111";
-
-                    resultImage.style.display = 'block';
-                    resultText.style.display = 'block';
-                };
-
-                // Fallback just in case the image fails to load
-                resultImage.onerror = () => {
-                    isFetchingImage = false;
-                    generatingText.textContent = 'generation failed.';
-                    setTimeout(() => {
-                        generatingText.style.display = 'none';
-                        startBtn.textContent = 'start';
-                        startBtn.style.display = 'inline-block';
-                        startBtn.style.color = "#111";
-                    }, 2000);
-                };
-
-            } else {
-                generatingText.style.display = 'none';
-                startBtn.textContent = 'start';
-                startBtn.style.display = 'inline-block';
-                startBtn.style.color = "#111";
+                resultText.style.display = 'block';
             }
         }
 
+        // --- KEYBOARD LOGIC ---
         testField.addEventListener('input', (e) => {
             if (!isRunning) return;
 
@@ -384,6 +360,7 @@
             }
         });
 
+        // --- MOUSE LOGIC ---
         document.addEventListener('mousemove', (e) => {
             realX = e.clientX;
             realY = e.clientY;
@@ -413,6 +390,7 @@
             lastRealY = realY;
         });
 
+        // --- ANIMATION LOOP ---
         function updateCursor() {
             if (isRunning) {
                 jitterX *= 0.92;
