@@ -124,9 +124,9 @@
         #result-image {
             display: none;
             width: 100%;
+            height: auto; /* Changed to auto so images don't get squashed! */
             border-radius: 8px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            object-fit: cover;
         }
 
         #result-text {
@@ -185,7 +185,6 @@
     </div>
 
     <script>
-        // !! CLOUDFLARE WORKER URL !!
         const WORKER_URL = "https://unsplash.mark-ebe.workers.dev";
 
         const AI_MODELS = {
@@ -202,7 +201,7 @@
         };
 
         const QWERTY_COORDS = {
-            'q': [0, 0], 'w':[0, 1], 'e':[0, 2], 'r': [0, 3], 't':[0, 4], 'y':[0, 5], 'u': [0, 6], 'i':[0, 7], 'o': [0, 8], 'p':[0, 9],
+            'q': [0, 0], 'w':[0, 1], 'e':[0, 2], 'r': [0, 3], 't':[0, 4], 'y':[0, 5], 'u': [0, 6], 'i':[0, 7], 'o':[0, 8], 'p':[0, 9],
             'a':[1, 0.25], 's':[1, 1.25], 'd':[1, 2.25], 'f':[1, 3.25], 'g':[1, 4.25], 'h':[1, 5.25], 'j':[1, 6.25], 'k':[1, 7.25], 'l':[1, 8.25],
             'z':[2, 0.75], 'x':[2, 1.75], 'c':[2, 2.75], 'v':[2, 3.75], 'b':[2, 4.75], 'n':[2, 5.75], 'm':[2, 6.75]
         };
@@ -242,7 +241,7 @@
             currentModelName = modelSelect.options[modelSelect.selectedIndex].text;
         });
 
-        // Keepalive ping on load so worker is warm when the timer ends
+        // Keepalive ping on load
         fetch(`${WORKER_URL}?q=warmup`).catch(() => {});
 
         function getAmount() {
@@ -259,7 +258,7 @@
             const [r1, c1] = QWERTY_COORDS[lowerChar];
             let distances = [];
 
-            for (const [key, [r2, c2]] of Object.entries(QWERTY_COORDS)) {
+            for (const [key,[r2, c2]] of Object.entries(QWERTY_COORDS)) {
                 if (key === lowerChar) continue;
                 const dist = Math.hypot(r1 - r2, c1 - c2);
                 distances.push({ key, dist });
@@ -330,7 +329,24 @@
                     .then(r => r.json())
                     .then(data => {
                         if (data.url) {
+                            let isFallback = false;
+                            
+                            // The function to swap to the local image
+                            const triggerFallback = () => {
+                                if (isFallback) return;
+                                isFallback = true;
+                                const randomNum = Math.floor(Math.random() * 10) + 1;
+                                resultImage.src = `failed/${randomNum}.jpg`; // Local path
+                            };
+
+                            // Start a 15-second countdown timer
+                            const timeoutId = setTimeout(() => {
+                                triggerFallback();
+                            }, 15000);
+
+                            // Triggered when EITHER the AI image or the Fallback image successfully loads
                             resultImage.onload = () => {
+                                clearTimeout(timeoutId);
                                 isFetchingImage = false;
                                 testField.style.display = 'none';
                                 generatingText.style.display = 'none';
@@ -340,7 +356,20 @@
                                 resultImage.style.display = 'block';
                                 resultText.style.display = 'block';
                             };
-                            resultImage.onerror = () => showError();
+
+                            // If an image fails to load
+                            resultImage.onerror = () => {
+                                clearTimeout(timeoutId);
+                                if (!isFallback) {
+                                    // The AI image failed, try the fallback
+                                    triggerFallback();
+                                } else {
+                                    // Even the fallback image failed (maybe the file is missing), show text error
+                                    showError();
+                                }
+                            };
+
+                            // Tell the browser to load the AI URL
                             resultImage.src = data.url;
                         } else {
                             showError();
