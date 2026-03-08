@@ -129,17 +129,13 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
 
-        #result-text {
+        #result-image {
             display: none;
-            font-family: 'Roboto', sans-serif;
-            font-weight: 100;
-            font-size: 1.2rem;
-            color: #444;
-            text-align: center;
             width: 100%;
-            word-wrap: break-word;
-            margin-top: -20px;
-            font-style: italic;
+            aspect-ratio: 16 / 9; /* Forces the box to always be a landscape rectangle */
+            object-fit: cover; /* NEVER squish: gracefully crop the edges if the image doesn't fit */
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
 
         #fake-cursor {
