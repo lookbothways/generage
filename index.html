@@ -124,18 +124,23 @@
         #result-image {
             display: none;
             width: 100%;
-            height: auto; /* Changed to auto so images don't get squashed! */
-            border-radius: 8px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        }
-
-        #result-image {
-            display: none;
-            width: 100%;
             aspect-ratio: 16 / 9; /* Forces the box to always be a landscape rectangle */
             object-fit: cover; /* NEVER squish: gracefully crop the edges if the image doesn't fit */
             border-radius: 8px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        #result-text {
+            display: none;
+            font-family: 'Roboto', sans-serif;
+            font-weight: 100;
+            font-size: 1.2rem;
+            color: #444;
+            text-align: center;
+            width: 100%;
+            word-wrap: break-word;
+            margin-top: -20px;
+            font-style: italic;
         }
 
         #fake-cursor {
@@ -165,7 +170,7 @@
     <div id="container">
         <div id="controls">
             <div class="timer-group">
-                <span id="generating-text"> generating in</span>
+                <span id="generating-text">Generating in...</span>
                 <button id="start-btn">start</button>
             </div>
             <div class="dropdown-wrapper">
@@ -184,16 +189,16 @@
         const WORKER_URL = "https://unsplash.mark-ebe.workers.dev";
 
         const AI_MODELS = {
-            "Google Nano Banana 2": 2.0,
-            "Google Imagen 4 Ultra": 4.0,
-            "Seedream 4.0": 6.0,
-            "Google Imagen 4": 8.0,
-            "Z-Image": 10.0,
-            "Grok": 12.0,
-            "SDXL": 14.0,
-            "Mystic 2.5": 16.0,
-            "Flux.2 Flex": 18.0,
-            "Mystic 2.5 Fluid": 20.0
+            "Google Nano Banana 2": 6.0,
+            "Google Imagen 4 Ultra": 8.0,
+            "Seedream 4.0": 10.0,
+            "Google Imagen 4": 12.0,
+            "Z-Image": 15.0,
+            "Grok": 16.0,
+            "SDXL": 17.0,
+            "Mystic 2.5": 18.0,
+            "Flux.2 Flex": 20.0,
+            "Mystic 2.5 Fluid": 200.0
         };
 
         const QWERTY_COORDS = {
@@ -204,7 +209,7 @@
 
         let isRunning = false;
         let isFetchingImage = false;
-        let timeLeft = 25;
+        let timeLeft = 15; // Changed countdown start to 15 seconds
         let timerInterval;
         let currentMultiplier = 10.0;
         let currentModelName = "SDXL";
@@ -284,9 +289,9 @@
             testField.disabled = false;
 
             isRunning = true;
-            timeLeft = 25;
+            timeLeft = 15; // Changed countdown start to 15 seconds
 
-            generatingText.textContent = 'generating in';
+            generatingText.textContent = 'Generating in...';
             generatingText.style.display = 'inline';
             startBtn.style.display = 'inline-block';
             startBtn.textContent = timeLeft;
@@ -335,10 +340,10 @@
                                 resultImage.src = `failed/${randomNum}.jpg`; // Local path
                             };
 
-                            // Start a 15-second countdown timer
+                            // Start a 25-second countdown timer
                             const timeoutId = setTimeout(() => {
                                 triggerFallback();
-                            }, 15000);
+                            }, 25000);
 
                             // Triggered when EITHER the AI image or the Fallback image successfully loads
                             resultImage.onload = () => {
