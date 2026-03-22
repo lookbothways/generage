@@ -357,12 +357,12 @@
                 resultText.textContent = `"${finalPrompt}"`;
 
                 // Set up the fake loading/generation countdown
-                let genTimeLeft = 10; // Number of seconds to fake-load
+                let genTimeLeft = 3; // Number of seconds to fake-load
                 generatingText.textContent = `Generating... ${genTimeLeft}s`;
 
                 const triggerFallback = () => {
                     // CHANGE THIS NUMBER if you add more images to your failed folder!
-                    const totalFailedImages = 10; 
+                    const totalFailedImages = 46; 
                     const randomNum = Math.floor(Math.random() * totalFailedImages) + 1;
                     resultImage.src = `failed/${randomNum}.jpg`; 
                 };
