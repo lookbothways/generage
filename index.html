@@ -42,6 +42,19 @@
             gap: 20px;
         }
 
+        .left-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            justify-content: center;
+        }
+
+        #instruction-text {
+            font-size: 0.85rem;
+            color: #888;
+            font-weight: 400;
+        }
+
         .timer-group {
             display: flex;
             align-items: baseline;
@@ -115,17 +128,27 @@
             background: #fafafa;
             box-shadow: inset 0 2px 5px rgba(0,0,0,0.02);
             box-sizing: border-box;
+            transition: all 0.3s ease;
         }
 
         textarea:focus {
             border-color: #bbb;
         }
 
+        /* Styling for when the text box is locked */
+        textarea:disabled {
+            background-color: #ebebeb;
+            color: #999;
+            cursor: not-allowed;
+            border-color: #e0e0e0;
+            box-shadow: none;
+        }
+
         #result-image {
             display: none;
             width: 100%;
-            aspect-ratio: 16 / 9; /* Forces the box to always be a landscape rectangle */
-            object-fit: cover; /* NEVER squish: gracefully crop the edges if the image doesn't fit */
+            aspect-ratio: 16 / 9;
+            object-fit: cover;
             border-radius: 8px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
@@ -169,50 +192,56 @@
 
     <div id="container">
         <div id="controls">
-            <div class="timer-group">
-                <span id="generating-text">Generating in...</span>
-                <button id="start-btn">start</button>
+            <div class="left-controls">
+                <div id="instruction-text">Choose an image generation model, press start and describe the image you want to generate...</div>
+                <div class="timer-group">
+                    <span id="generating-text">Generating in...</span>
+                    <button id="start-btn">start</button>
+                </div>
             </div>
+            
             <div class="dropdown-wrapper">
                 <label>Current model</label>
                 <select id="model-select"></select>
             </div>
         </div>
         
-        <textarea id="test-field" placeholder="Choose an image generation model, press START and describe the image you want to generate..."></textarea>
+        <!-- Disabled by default to grey it out -->
+        <textarea id="test-field" disabled></textarea>
         
-        <img id="result-image" src="" alt="Generated Image" crossorigin="anonymous" referrerpolicy="no-referrer">
+        <img id="result-image" src="" alt="Generated Image">
         <div id="result-text"></div>
     </div>
 
     <script>
-        const WORKER_URL = "https://unsplash.mark-ebe.workers.dev";
-
+        // AI models have been doubled in difficulty and Nano Banana removed
         const AI_MODELS = {
-            "Google Nano Banana 2": 6.0,
-            "Google Imagen 4 Ultra": 8.0,
-            "Seedream 4.0": 10.0,
-            "Google Imagen 4": 12.0,
-            "Z-Image": 15.0,
-            "Grok": 16.0,
-            "SDXL": 17.0,
-            "Mystic 2.5": 18.0,
-            "Flux.2 Flex": 20.0,
-            "Mystic 2.5 Fluid": 200.0
+            "Google Imagen 4 Ultra": 16.0,
+            "Seedream 4.0": 20.0,
+            "Google Imagen 4": 24.0,
+            "Z-Image": 30.0,
+            "Grok": 32.0,
+            "SDXL": 34.0,
+            "Mystic 2.5": 36.0,
+            "Flux.2 Flex": 40.0,
+            "Mystic 2.5 Fluid": 400.0
         };
 
         const QWERTY_COORDS = {
-            'q': [0, 0], 'w':[0, 1], 'e':[0, 2], 'r': [0, 3], 't':[0, 4], 'y':[0, 5], 'u': [0, 6], 'i':[0, 7], 'o':[0, 8], 'p':[0, 9],
+            'q':[0, 0], 'w':[0, 1], 'e':[0, 2], 'r':[0, 3], 't':[0, 4], 'y':[0, 5], 'u':[0, 6], 'i':[0, 7], 'o':[0, 8], 'p':[0, 9],
             'a':[1, 0.25], 's':[1, 1.25], 'd':[1, 2.25], 'f':[1, 3.25], 'g':[1, 4.25], 'h':[1, 5.25], 'j':[1, 6.25], 'k':[1, 7.25], 'l':[1, 8.25],
             'z':[2, 0.75], 'x':[2, 1.75], 'c':[2, 2.75], 'v':[2, 3.75], 'b':[2, 4.75], 'n':[2, 5.75], 'm':[2, 6.75]
         };
 
         let isRunning = false;
         let isFetchingImage = false;
-        let timeLeft = 15; // Changed countdown start to 15 seconds
+        let timeLeft = 15; // User gets 15 seconds to type
         let timerInterval;
-        let currentMultiplier = 10.0;
-        let currentModelName = "SDXL";
+        let generationInterval; // Fake generation loading timer
+        
+        // Defaults to the new best model
+        let currentMultiplier = 16.0;
+        let currentModelName = "Google Imagen 4 Ultra";
 
         let realX = window.innerWidth / 2;
         let realY = window.innerHeight / 2;
@@ -222,6 +251,7 @@
         let jitterY = 0;
 
         const startBtn = document.getElementById('start-btn');
+        const instructionText = document.getElementById('instruction-text');
         const generatingText = document.getElementById('generating-text');
         const modelSelect = document.getElementById('model-select');
         const testField = document.getElementById('test-field');
@@ -235,15 +265,13 @@
             option.textContent = name;
             modelSelect.appendChild(option);
         }
-        modelSelect.value = "10";
+        // Set dropdown default visually
+        modelSelect.value = "16";
 
         modelSelect.addEventListener('change', (e) => {
             currentMultiplier = parseFloat(e.target.value);
             currentModelName = modelSelect.options[modelSelect.selectedIndex].text;
         });
-
-        // Keepalive ping on load
-        fetch(`${WORKER_URL}?q=warmup`).catch(() => {});
 
         function getAmount() {
             return (Math.sin(Date.now() / 1000 * 2) + 1) / 2 * 0.9 + 0.1;
@@ -286,11 +314,14 @@
             resultText.style.display = 'none';
             testField.style.display = 'block';
             testField.value = '';
+            
+            // Unlock the text area
             testField.disabled = false;
 
             isRunning = true;
-            timeLeft = 15; // Changed countdown start to 15 seconds
+            timeLeft = 15; 
 
+            instructionText.style.display = 'none'; // Hide instructions while running
             generatingText.textContent = 'Generating in...';
             generatingText.style.display = 'inline';
             startBtn.style.display = 'inline-block';
@@ -318,84 +349,115 @@
             if (finishedGeneration) {
                 isFetchingImage = true;
                 startBtn.style.display = 'none';
-                generatingText.textContent = 'Generating...';
-                testField.disabled = true;
+                instructionText.style.display = 'none'; // Keep instructions hidden during generation
+                testField.disabled = true; // Lock it back up
 
                 let finalPrompt = testField.value.trim();
                 if (!finalPrompt) finalPrompt = "empty void of failure";
-
                 resultText.textContent = `"${finalPrompt}"`;
 
-                fetch(`${WORKER_URL}?q=${encodeURIComponent(finalPrompt)}`)
-                    .then(r => r.json())
-                    .then(data => {
-                        if (data.url) {
-                            let isFallback = false;
-                            
-                            // The function to swap to the local image
-                            const triggerFallback = () => {
-                                if (isFallback) return;
-                                isFallback = true;
-                                const randomNum = Math.floor(Math.random() * 10) + 1;
-                                resultImage.src = `failed/${randomNum}.jpg`; // Local path
-                            };
+                // Set up the fake loading/generation countdown
+                let genTimeLeft = 10; // Number of seconds to fake-load
+                generatingText.textContent = `Generating... ${genTimeLeft}s`;
 
-                            // Start a 25-second countdown timer
-                            const timeoutId = setTimeout(() => {
-                                triggerFallback();
-                            }, 25000);
+                const triggerFallback = () => {
+                    // CHANGE THIS NUMBER if you add more images to your failed folder!
+                    const totalFailedImages = 10; 
+                    const randomNum = Math.floor(Math.random() * totalFailedImages) + 1;
+                    resultImage.src = `failed/${randomNum}.jpg`; 
+                };
 
-                            // Triggered when EITHER the AI image or the Fallback image successfully loads
-                            resultImage.onload = () => {
-                                clearTimeout(timeoutId);
-                                isFetchingImage = false;
-                                testField.style.display = 'none';
-                                generatingText.style.display = 'none';
-                                startBtn.textContent = 'start';
-                                startBtn.style.display = 'inline-block';
-                                startBtn.style.color = "#111";
-                                resultImage.style.display = 'block';
-                                resultText.style.display = 'block';
-                            };
+                generationInterval = setInterval(() => {
+                    genTimeLeft--;
+                    if (genTimeLeft > 0) {
+                        generatingText.textContent = `Generating... ${genTimeLeft}s`;
+                    } else {
+                        // Time's up! Show the pre-made joke image.
+                        clearInterval(generationInterval);
+                        triggerFallback();
+                    }
+                }, 1000);
 
-                            // If an image fails to load
-                            resultImage.onerror = () => {
-                                clearTimeout(timeoutId);
-                                if (!isFallback) {
-                                    // The AI image failed, try the fallback
-                                    triggerFallback();
-                                } else {
-                                    // Even the fallback image failed (maybe the file is missing), show text error
-                                    showError();
-                                }
-                            };
+                // Runs instantly when the local image successfully loads
+                resultImage.onload = () => {
+                    isFetchingImage = false;
+                    testField.style.display = 'none';
+                    generatingText.style.display = 'none';
+                    
+                    // Reset UI for next round
+                    instructionText.style.display = 'block';
+                    startBtn.textContent = 'start';
+                    startBtn.style.display = 'inline-block';
+                    startBtn.style.color = "#111";
+                    
+                    resultImage.style.display = 'block';
+                    resultText.style.display = 'block';
+                };
 
-                            // Tell the browser to load the AI URL
-                            resultImage.src = data.url;
-                        } else {
-                            showError();
-                        }
-                    })
-                    .catch(() => showError());
+                // Safety net in case the user forgets to upload the images
+                resultImage.onerror = () => {
+                    showError();
+                };
 
             } else {
                 generatingText.style.display = 'none';
+                instructionText.style.display = 'block';
                 startBtn.textContent = 'start';
                 startBtn.style.display = 'inline-block';
                 startBtn.style.color = "#111";
+                testField.disabled = true; // Lock it back up on cancel
             }
         }
 
         function showError() {
+            clearInterval(generationInterval); 
             isFetchingImage = false;
-            generatingText.textContent = 'generation failed.';
+            generatingText.textContent = 'generation failed. Image missing.';
             setTimeout(() => {
                 generatingText.style.display = 'none';
+                instructionText.style.display = 'block';
                 startBtn.textContent = 'start';
                 startBtn.style.display = 'inline-block';
                 startBtn.style.color = "#111";
             }, 2000);
         }
+
+        // --- NEW: INTERCEPT PASTE EVENT ---
+        testField.addEventListener('paste', (e) => {
+            if (!isRunning) return;
+            
+            // Stop the normal paste from happening
+            e.preventDefault();
+            
+            // Get the text they are trying to paste
+            const pasteText = (e.clipboardData || window.clipboardData).getData('text');
+            let garbled = '';
+            
+            // Process every character in the pasted text
+            for (let i = 0; i < pasteText.length; i++) {
+                const char = pasteText[i];
+                
+                // If it's a letter, apply a high chance of scrambling it
+                if (/[a-zA-Z]/.test(char)) {
+                    if (Math.random() < 0.8) { // 80% chance to typo the pasted letter
+                        garbled += getTypo(char, currentMultiplier);
+                    } else {
+                        garbled += char;
+                    }
+                } else {
+                    // Keep spaces, numbers, and punctuation exactly as they were
+                    garbled += char;
+                }
+            }
+            
+            // Insert the scrambled text wherever their cursor currently is
+            const start = testField.selectionStart;
+            const end = testField.selectionEnd;
+            testField.value = testField.value.substring(0, start) + garbled + testField.value.substring(end);
+            
+            // Move cursor to the end of the pasted text
+            testField.selectionStart = testField.selectionEnd = start + garbled.length;
+        });
 
         testField.addEventListener('input', (e) => {
             if (!isRunning) return;
