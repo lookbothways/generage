@@ -114,6 +114,13 @@
             width: 180px;
         }
 
+        #input-group {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
         textarea {
             width: 100%;
             height: 200px;
@@ -142,6 +149,29 @@
             cursor: not-allowed;
             border-color: #e0e0e0;
             box-shadow: none;
+        }
+
+        #increase-time-btn {
+            display: none; /* Hidden by default */
+            align-self: flex-start; /* Left aligns in the flex container */
+            font-family: 'Roboto', sans-serif;
+            font-weight: 100;
+            font-size: 0.7rem; /* Half as big */
+            padding: 7.5px 15px; /* Half as big */
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #fafafa;
+            color: #111;
+            cursor: pointer;
+            outline: none;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.02);
+            box-sizing: border-box;
+            transition: all 0.3s ease;
+        }
+
+        #increase-time-btn:hover {
+            border-color: #bbb;
+            color: #ff0000;
         }
 
         #result-image {
@@ -206,8 +236,11 @@
             </div>
         </div>
         
-        <!-- Disabled by default to grey it out -->
-        <textarea id="test-field" disabled></textarea>
+        <div id="input-group">
+            <!-- Disabled by default to grey it out -->
+            <textarea id="test-field" disabled></textarea>
+            <button id="increase-time-btn">Increase time</button>
+        </div>
         
         <img id="result-image" src="" alt="Generated Image">
         <div id="result-text"></div>
@@ -238,6 +271,7 @@
         let timeLeft = 15; // User gets 15 seconds to type
         let timerInterval;
         let generationInterval; // Fake generation loading timer
+        let timeIncreased = false; // Flag to track if they've used their 1-time boost
         
         // Defaults to the new best model
         let currentMultiplier = 16.0;
@@ -255,6 +289,7 @@
         const generatingText = document.getElementById('generating-text');
         const modelSelect = document.getElementById('model-select');
         const testField = document.getElementById('test-field');
+        const increaseTimeBtn = document.getElementById('increase-time-btn');
         const resultImage = document.getElementById('result-image');
         const resultText = document.getElementById('result-text');
         const fakeCursor = document.getElementById('fake-cursor');
@@ -287,7 +322,7 @@
             const [r1, c1] = QWERTY_COORDS[lowerChar];
             let distances = [];
 
-            for (const [key,[r2, c2]] of Object.entries(QWERTY_COORDS)) {
+            for (const[key,[r2, c2]] of Object.entries(QWERTY_COORDS)) {
                 if (key === lowerChar) continue;
                 const dist = Math.hypot(r1 - r2, c1 - c2);
                 distances.push({ key, dist });
@@ -312,11 +347,13 @@
 
             resultImage.style.display = 'none';
             resultText.style.display = 'none';
-            testField.style.display = 'block';
-            testField.value = '';
             
-            // Unlock the text area
+            // Show inputs, unlock them, and reveal the button
+            testField.style.display = 'block';
+            increaseTimeBtn.style.display = 'block';
+            testField.value = '';
             testField.disabled = false;
+            timeIncreased = false; // Reset the boost allowance for the new round
 
             isRunning = true;
             timeLeft = 15; 
@@ -339,6 +376,17 @@
             }, 1000);
         });
 
+        increaseTimeBtn.addEventListener('click', () => {
+            if (isRunning) {
+                if (!timeIncreased) {
+                    timeLeft += 5; // Reward the player with 5 seconds
+                    startBtn.textContent = timeLeft;
+                    timeIncreased = true; // Mark as used
+                }
+                testField.focus(); // Snap focus back to the text box whether it worked or not
+            }
+        });
+
         function stopRage(finishedGeneration = false) {
             isRunning = false;
             clearInterval(timerInterval);
@@ -350,7 +398,10 @@
                 isFetchingImage = true;
                 startBtn.style.display = 'none';
                 instructionText.style.display = 'none'; // Keep instructions hidden during generation
-                testField.disabled = true; // Lock it back up
+                
+                // Lock inputs back up
+                testField.disabled = true; 
+                increaseTimeBtn.style.display = 'none'; // hide it again
 
                 let finalPrompt = testField.value.trim();
                 if (!finalPrompt) finalPrompt = "empty void of failure";
@@ -382,6 +433,7 @@
                 resultImage.onload = () => {
                     isFetchingImage = false;
                     testField.style.display = 'none';
+                    increaseTimeBtn.style.display = 'none';
                     generatingText.style.display = 'none';
                     
                     // Reset UI for next round
@@ -405,7 +457,10 @@
                 startBtn.textContent = 'start';
                 startBtn.style.display = 'inline-block';
                 startBtn.style.color = "#111";
-                testField.disabled = true; // Lock it back up on cancel
+                
+                // Lock inputs back up on cancel
+                testField.disabled = true; 
+                increaseTimeBtn.style.display = 'none';
             }
         }
 
